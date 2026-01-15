@@ -259,7 +259,7 @@ class Database:
         logging.debug(f"Took {response.elapsed.total_seconds()}")
 
         if(response.status_code != 200):
-            #If we don't get a success status code, then return and unauthorized user 
+            #If we don't get a success status code, then return an unauthorized user 
             logging.error(f"API error")
             details = {
                     "user_is_authorized": False,

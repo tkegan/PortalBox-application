@@ -194,55 +194,55 @@ class RunningUnknownCard(State):
     A Card has been read from the no card grace period
     """
     def __call__(self, input_data):
-        logging.debug("is USER? {}".format(input_data["card_type"] == CardType.USER_CARD))
-        logging.debug(f"User authority level:{self.user_authority_level}")
-        logging.debug(f"Proxy Id:{self.proxy_id}")
-        #Proxy card, AND not coming from training mode
-        if(
-            input_data["card_type"] == CardType.PROXY_CARD and
-            self.training_id <= 0 
-          ):
-            #If the machine allows proxy cards then go into proxy mode
-            if(self.allow_proxy == 1):
+        if(input_data["card_type"] == CardType.PROXY_CARD):
+            # If the machine allows proxy cards and we are not in training mode
+            # then go into proxy mode
+            if(self.allow_proxy == 1 and self.training_id <= 0):
                 self.next_state(RunningProxyCard, input_data)
                 self.service.box.stop_buzzer(stop_beeping = True)
-            #Otherwise go into a grace period 
+
+            # Otherwise go into a grace period
             else:
                 self.next_state(RunningUnauthCard, input_data)
                 self.service.box.stop_buzzer(stop_beeping = True)
 
-        #If its the same user as before then just go back to auth user
-        elif(input_data["card_id"] == self.auth_user_id):
-            self.next_state(RunningAuthUser, input_data)
-            self.service.box.stop_buzzer(stop_beeping = True)
+        elif(input_data["card_type"] == CardType.USER_CARD):
+            # if the activating user's card is being returned go back to normal run
+            if(input_data["card_id"] == self.auth_user_id):
+                self.next_state(RunningAuthUser, input_data)
+                self.service.box.stop_buzzer(stop_beeping = True)
 
-        #User card, AND
-        #The box was initially authorized by a trainer or admin AND
-        #Not coming from proxy mode AND
-        #Not coming from training mode, OR the card is the same one that was being trained AND
-        #An unauthorized user
-
-        elif(
-            input_data["card_type"] == CardType.USER_CARD and
-            self.user_authority_level >= 3 and
-            self.proxy_id <= 0 and
-            (self.training_id <= 0 or self.training_id == input_data["card_id"]) and
-            not input_data["user_is_authorized"]
+            # if initially authorized by a trainer (this check is incorrect)
+            # and not coming from proxy mode
+            # and not coming from training mode and switching cards
+            # and the user is not authorized
+            # then enter training mode
+            elif (
+                self.user_authority_level >= 3
+                and self.proxy_id <= 0
+                and (self.training_id <= 0 or self.training_id == input_data["card_id"])
+                and not input_data["user_is_authorized"]
             ):
-            self.next_state(RunningTrainingCard, input_data)
-            self.service.box.stop_buzzer(stop_beeping = True)
+                self.next_state(RunningTrainingCard, input_data)
+                self.service.box.stop_buzzer(stop_beeping = True)
 
-        elif(self.grace_expired()):
-            logging.debug("Exiting Grace period because the grace period expired")
+            # Otherwise go into a grace period
+            else:
+                self.next_state(RunningUnauthCard, input_data)
+                self.service.box.stop_buzzer(stop_beeping = True)
+
+        else:
+            if(self.grace_expired()):
+                logging.debug("Exiting Grace period because the grace period expired")
+
+            elif(input_data["button_pressed"]):
+                logging.debug("Exiting Grace period because button was pressed")
+
+            else:
+                logging.debug("Exiting Grace period for unknown reason")
+
             self.next_state(AccessComplete, input_data)
             self.service.box.stop_buzzer(stop_beeping = True)
-
-        if(input_data["button_pressed"]):
-            logging.debug("Exiting Grace period because button was pressed")
-            self.next_state(AccessComplete, input_data)
-            self.service.box.stop_buzzer(stop_beeping = True)
-        # else:
-        #     self.next_state(AccessComplete, input_data)
 
 
 class RunningAuthUser(State):
@@ -274,7 +274,6 @@ class RunningAuthUser(State):
         if self.auth_user_id != input_data["card_id"]:
             self.service.db.log_access_attempt(input_data["card_id"], self.service.equipment_id, True)
 
-        
         self.auth_user_id = input_data["card_id"]
         self.user_authority_level = input_data["user_authority_level"]
 
@@ -308,7 +307,6 @@ class RunningNoCard(State):
         #Card detected
         if(input_data["card_id"] > 0 and input_data["card_type"] != CardType.INVALID_CARD):
             self.next_state(RunningUnknownCard, input_data)
-           # self.service.box.stop_buzzer(stop_beeping = True)
 
         if(self.grace_expired()):
             logging.debug("Exiting Grace period because the grace period expired")
@@ -379,7 +377,7 @@ class RunningUnauthCard(State):
             self.grace_delta.seconds * 1000,
             int(self.grace_delta.seconds * self.flash_rate)
             )
-        
+
         self.service.box.start_beeping(
             800,
             self.grace_delta.seconds * 1000,
