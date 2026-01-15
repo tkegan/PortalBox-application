@@ -377,7 +377,7 @@ class RunningUnauthCard(State):
             self.grace_delta.seconds * 1000,
             int(self.grace_delta.seconds * self.flash_rate)
             )
-        
+
         self.service.box.start_beeping(
             800,
             self.grace_delta.seconds * 1000,
